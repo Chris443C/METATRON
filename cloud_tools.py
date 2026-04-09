@@ -5,6 +5,10 @@ import json
 import shutil
 
 
+# Prowler output prefixes that indicate a tool error rather than scan results.
+_PROWLER_ERROR_STRINGS = ("not installed", "Timeout", "Error: ", "Tool not found")
+
+
 def _run(cmd, timeout=120):
     """Run a command, return stdout+stderr as string. Never raises."""
     try:

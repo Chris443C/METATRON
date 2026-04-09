@@ -1,13 +1,16 @@
 """Tests for Prowler error-detection logic used in phase_9_cloud_assessment."""
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import cloud_tools
 
-# The error strings the implementation checks to decide whether to skip DB save.
-ERROR_STRINGS = ("not installed", "Timeout", "Error", "Tool not found")
+_PROWLER_ERROR_STRINGS = cloud_tools._PROWLER_ERROR_STRINGS
 
 
 def _is_prowler_error(output: str) -> bool:
-    """Mirror of the check used in methodology.py."""
-    return any(x in output[:50] for x in ERROR_STRINGS)
+    """Check if Prowler output signals a failure condition."""
+    return any(x in output[:50] for x in _PROWLER_ERROR_STRINGS)
 
 
 def test_not_installed_is_detected():
@@ -37,8 +40,8 @@ def test_empty_output_is_not_detected_as_error():
 
 
 def test_error_at_boundary_inside():
-    # Error token starts at char 45 — within the [:50] window (just inside)
-    msg = "A" * 45 + "Error: something"
+    # "Error: " (7 chars) starts at char 43 — fully within the [:50] window
+    msg = "A" * 43 + "Error: something"
     assert _is_prowler_error(msg)
 
 

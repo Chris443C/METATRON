@@ -466,8 +466,7 @@ def phase_9_cloud_assessment(engagement_id, sl_no):
             if answer == "y":
                 info("Running Prowler AWS compliance scan (this may take 5-10 minutes)...")
                 prowler_out = cloud_tools.aws_run_prowler()
-                error_strings = ("not installed", "Timeout", "Error", "Tool not found")
-                if any(x in prowler_out[:50] for x in error_strings):
+                if any(x in prowler_out[:50] for x in cloud_tools._PROWLER_ERROR_STRINGS):
                     warn(f"Prowler skipped: {prowler_out[:200]}")
                 else:
                     db.save_evidence(sl_no, engagement_id, "prowler_scan",
