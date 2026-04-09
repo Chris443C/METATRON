@@ -269,14 +269,16 @@ def interactive_tool_run(target: str) -> str:
 
     choice = input("\nChoice(s) e.g. 1 2 4 or a: ").strip().lower()
 
-    if choice == "a":
-        results = run_default_recon(target)
-        return format_recon_for_llm(results)
+    NIKTO_KEY = "6"
 
-    if choice == "n":
-        results = run_default_recon(target)
-        results["nikto"] = run_nikto(target)
-        return format_recon_for_llm(results)
+    if choice in ("a", "n"):
+        combined = {}
+        for key, (name, func) in TOOLS_MENU.items():
+            if choice == "a" and key == NIKTO_KEY:
+                continue  # skip nikto for [a]
+            print(f"\n[*] Running {name}...")
+            combined[name] = func(target)
+        return format_recon_for_llm(combined)
 
     combined = {}
     for key in choice.split():
