@@ -135,13 +135,47 @@ pip install -r requirements.txt
 sudo apt install nmap whois whatweb curl dnsutils nikto
 
 # Phase 3 enumeration tools
-sudo apt install gobuster dirb ffuf masscan enum4linux
+sudo apt install gobuster dirb masscan
 
 # Segmentation testing
 sudo apt install ncat netcat-openbsd
 
 # Optional: subdomain and OSINT tools
 sudo apt install sublist3r theharvester
+```
+
+> **Note:** `enum4linux` is not in the Ubuntu/Debian apt repos. METATRON automatically falls back to nmap SMB scripts if it is not found. To install it manually:
+> ```bash
+> cd /opt && sudo git clone https://github.com/CiscoCXSecurity/enum4linux.git
+> sudo ln -s /opt/enum4linux/enum4linux.pl /usr/local/bin/enum4linux
+> ```
+
+> **Note:** `ffuf` is not in the standard apt repos. Install via the GitHub release binary:
+> ```bash
+> wget -q https://github.com/ffuf/ffuf/releases/latest/download/ffuf_2.1.0_linux_amd64.tar.gz -O /tmp/ffuf.tar.gz
+> tar -xzf /tmp/ffuf.tar.gz -C /tmp && sudo mv /tmp/ffuf /usr/local/bin/ffuf
+> ```
+
+### 5. Allow masscan to run without a password prompt
+
+`masscan` requires root privileges. Grant your user passwordless sudo for masscan only (replace `chris` with your username):
+
+```bash
+# Find the exact binary path
+which masscan
+
+# Create the sudoers rule (opens editor — add the line below, save and exit)
+sudo visudo -f /etc/sudoers.d/metatron-masscan
+```
+
+Add this line (use the path from `which masscan` above):
+```
+chris ALL=(ALL) NOPASSWD: /usr/bin/masscan
+```
+
+Verify it works without a password prompt:
+```bash
+sudo masscan --version
 ```
 
 ---
