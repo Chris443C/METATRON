@@ -1,0 +1,12 @@
+{
+  "ToolkitName": "SegTest-QSA",
+  "ReportTitle": "Segmentation Test Summary",
+  "DefaultTimeoutSeconds": 5,
+  "CreateMarkdownReport": true,
+  "CreateCsvOutput": true,
+  "CreateJsonOutput": true,
+  "RepeatFailures": true,
+  "RepeatFailureDelaySeconds": 2,
+  "EvidenceMode": "Standard",
+  "OperatorName": "Chris Ince"
+}
