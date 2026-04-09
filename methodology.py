@@ -172,10 +172,12 @@ def phase_2_recon(engagement_id):
 
 def phase_3_enumeration(engagement_id, sl_no, raw_scan):
     """Enumeration phase. Returns combined enum string."""
-    from metatron import success, info, divider
+    from metatron import success, warn, info, divider
     divider()
     info("PHASE 3 — ENUMERATION")
     target = _get_target_for_sl(sl_no)
+    info(f"Target: {target}")
+    print()
     print("  Select enumeration types to run:")
     print("  [1] Web directory brute force (gobuster)")
     print("  [2] SMB enumeration (enum4linux)")
@@ -189,8 +191,48 @@ def phase_3_enumeration(engagement_id, sl_no, raw_scan):
         "ldap":          "a" in choice or "3" in choice,
         "api_discovery": "a" in choice or "4" in choice,
     }
-    enum_results = enum_tools.run_full_enumeration(target, options)
-    enum_str = enum_tools.format_enum_for_llm(enum_results)
+
+    combined_sections = []
+
+    if options["web_dirs"]:
+        info("Running: gobuster web directory brute force...")
+        result = enum_tools.run_web_dir_enum(target)
+        output = result.get("raw_output", "(no output)")
+        print(output[:2000])
+        if len(output) > 2000:
+            print(f"  ... [{len(output) - 2000} chars truncated]")
+        combined_sections.append(f"--- WEB DIRS ---\n{output}")
+        if "not found" in output.lower() or "error" in output.lower():
+            warn("gobuster may not be installed: sudo apt install gobuster")
+
+    if options["smb"]:
+        info("Running: enum4linux SMB enumeration...")
+        result = enum_tools.run_enum4linux(target)
+        output = result.get("raw_output", "(no output)")
+        print(output[:2000])
+        combined_sections.append(f"--- SMB ---\n{output}")
+        if "not found" in output.lower() or "command not found" in output.lower():
+            warn("enum4linux may not be installed — see README for install steps")
+
+    if options["ldap"]:
+        info("Running: nmap LDAP enumeration...")
+        result = enum_tools.run_ldap_enum(target)
+        output = result.get("raw_output", "(no output)")
+        print(output[:2000])
+        combined_sections.append(f"--- LDAP ---\n{output}")
+
+    if options["api_discovery"]:
+        info("Running: API endpoint discovery...")
+        result = enum_tools.run_api_discovery(target)
+        output = result.get("raw_output", "(no output)")
+        print(output[:2000])
+        combined_sections.append(f"--- API ENDPOINTS ---\n{output}")
+
+    if not combined_sections:
+        warn("No enumeration types selected.")
+        return ""
+
+    enum_str = f"=== ENUMERATION: {target} ===\n" + "\n\n".join(combined_sections)
     db.save_evidence(sl_no, engagement_id, "enumeration", "command_output",
                      f"Enumeration: {target}", enum_str)
     info("Running AI analysis (Phase 3 — Enumeration)...")
