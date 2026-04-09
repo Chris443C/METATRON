@@ -94,7 +94,7 @@ def confirm(question: str) -> bool:
 # NEW SCAN
 # ─────────────────────────────────────────────
 
-def new_scan():
+def new_scan(return_sl_no=False):
     divider("NEW SCAN")
     target = prompt("[?] Enter target IP or domain: ")
     if not target:
@@ -173,6 +173,9 @@ def new_scan():
 
     if confirm("Edit or delete anything in this session?"):
         edit_delete_menu(sl_no)
+
+    if return_sl_no:
+        return sl_no
 
 
 # ─────────────────────────────────────────────
@@ -394,25 +397,163 @@ def check_db():
 # MAIN MENU
 # ─────────────────────────────────────────────
 
+def retest_flow(engagement_id=None, original_sl_no=None):
+    """Phase 8 retest workflow — runs new scan and compares with original."""
+    divider()
+    info("RETEST WORKFLOW")
+    if not original_sl_no:
+        view_history()
+        try:
+            original_sl_no = int(prompt("Enter original scan SL# to retest: "))
+        except ValueError:
+            warn("Invalid SL#.")
+            return
+    original_data = get_session(original_sl_no)
+    if not original_data:
+        error(f"SL#{original_sl_no} not found.")
+        return
+    info(f"Original scan: {original_data['history'][1]} on {original_data['history'][2]}")
+    info(f"Vulnerabilities: {len(original_data.get('vulnerabilities', []))}")
+    if confirm("Run a new scan now for retest?"):
+        new_sl_no = new_scan(return_sl_no=True)
+    else:
+        try:
+            new_sl_no = int(prompt("Enter existing scan SL# to use as retest: "))
+        except ValueError:
+            warn("Invalid SL#.")
+            return
+    if not new_sl_no:
+        return
+    retest_data = get_session(new_sl_no)
+    info("Comparing findings with AI...")
+    from llm import compare_retest
+    comparison = compare_retest(original_data, retest_data)
+    divider()
+    info("RETEST RESULTS")
+    print(f"  Remediation score: {comparison['remediation_score']}%")
+    for fc in comparison["findings_comparison"]:
+        status_sym = "✓" if fc["status"] == "FIXED" else "✗"
+        print(f"  [{status_sym}] {fc['vuln_name']} — {fc['status']}")
+    if comparison["new_findings"]:
+        warn(f"  {len(comparison['new_findings'])} NEW finding(s) discovered!")
+    print(f"\n  {comparison['retest_summary']}")
+    overall = ("all_fixed" if comparison["remediation_score"] >= 100
+               else "partial" if comparison["remediation_score"] > 0 else "none_fixed")
+    from db import create_retest_session
+    create_retest_session(original_sl_no, new_sl_no, engagement_id,
+                          overall, comparison["retest_summary"])
+    success("Retest session recorded.")
+
+
+def engagement_menu():
+    """Engagement management sub-menu."""
+    import engagement as eng
+    while True:
+        divider()
+        print("  [1] New engagement")
+        print("  [2] Resume engagement")
+        print("  [3] List all engagements")
+        print("  [4] Back")
+        choice = input("\n  Choice: ").strip()
+        if choice == "1":
+            import methodology
+            eid = eng.new_engagement_wizard()
+            if eid and confirm("Start methodology workflow now?"):
+                methodology.run_methodology_workflow(eid)
+        elif choice == "2":
+            import methodology
+            eid = eng.select_or_create_engagement()
+            if eid:
+                methodology.run_methodology_workflow(eid)
+        elif choice == "3":
+            eng.list_engagements()
+        elif choice == "4":
+            break
+
+
+def _standalone_cloud_assessment():
+    """Standalone cloud assessment outside of a full engagement."""
+    divider()
+    info("STANDALONE CLOUD ASSESSMENT")
+    info("No engagement required — results saved to most recent scan session.")
+    divider()
+    sessions = get_all_history()
+    if not sessions:
+        warn("No scan sessions found. Run a Quick Scan first to create a session.")
+        return
+    sl_no = sessions[0][0]
+    info(f"Using most recent session: SL#{sl_no}")
+    import methodology
+    methodology.phase_9_cloud_assessment(None, sl_no)
+
+
+def _standalone_segmentation_test():
+    """Standalone segmentation test outside of a full engagement."""
+    divider()
+    info("STANDALONE SEGMENTATION TESTING — PCI DSS 11.4.5")
+    sessions = get_all_history()
+    if not sessions:
+        warn("No scan sessions found. Run a Quick Scan first to create a session.")
+        return
+    sl_no = sessions[0][0]
+    info(f"Using most recent session: SL#{sl_no}")
+    import methodology
+    methodology.phase_10_segmentation(None, sl_no)
+
+
 def main_menu():
     while True:
         banner()
-        print("  \033[92m[1]\033[0m  New Scan")
-        print("  \033[92m[2]\033[0m  View History")
-        print("  \033[92m[3]\033[0m  Exit")
+        print("  \033[92m[1]\033[0m  New Engagement  (10-phase methodology)")
+        print("  \033[92m[2]\033[0m  Quick Scan      (legacy, no engagement)")
+        print("  \033[92m[3]\033[0m  View History")
+        print("  \033[92m[4]\033[0m  Engagements")
+        print("  \033[92m[5]\033[0m  Retest")
+        print("  \033[92m[6]\033[0m  Cloud Assessment")
+        print("  \033[92m[7]\033[0m  Segmentation Testing  (PCI 11.4.5)")
+        print("  \033[92m[8]\033[0m  Export Report")
+        print("  \033[92m[9]\033[0m  Exit")
         divider()
 
         choice = prompt("metatron> ")
 
         if choice == "1":
-            new_scan()
+            import methodology
+            import engagement as eng
+            eid = eng.select_or_create_engagement()
+            if eid:
+                methodology.run_methodology_workflow(eid)
             input("\n\033[90mPress Enter to continue...\033[0m")
 
         elif choice == "2":
-            view_history()
+            new_scan()
             input("\n\033[90mPress Enter to continue...\033[0m")
 
         elif choice == "3":
+            view_history()
+            input("\n\033[90mPress Enter to continue...\033[0m")
+
+        elif choice == "4":
+            engagement_menu()
+            input("\n\033[90mPress Enter to continue...\033[0m")
+
+        elif choice == "5":
+            retest_flow()
+            input("\n\033[90mPress Enter to continue...\033[0m")
+
+        elif choice == "6":
+            _standalone_cloud_assessment()
+            input("\n\033[90mPress Enter to continue...\033[0m")
+
+        elif choice == "7":
+            _standalone_segmentation_test()
+            input("\n\033[90mPress Enter to continue...\033[0m")
+
+        elif choice == "8":
+            view_history()
+            input("\n\033[90mPress Enter to continue...\033[0m")
+
+        elif choice == "9":
             print("\n\033[91m[*] Shutting down Metatron. Stay legal.\033[0m\n")
             sys.exit(0)
 

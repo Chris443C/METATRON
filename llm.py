@@ -370,3 +370,430 @@ if __name__ == "__main__":
     print(f"Summary    : {result['summary']}")
     print(f"Vulns found: {len(result['vulnerabilities'])}")
     print(f"Exploits   : {len(result['exploits'])}")
+
+
+# ─────────────────────────────────────────────
+# PHASE-SPECIFIC SYSTEM PROMPTS
+# ─────────────────────────────────────────────
+
+RECON_SYSTEM_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are in Phase 2: Reconnaissance.
+Analyze the recon data and identify the attack surface.
+Use [TOOL:] and [SEARCH:] tags to request more information.
+
+Format findings as:
+RECON_FINDING: <finding> | TYPE: <port|service|tech|exposure> | INTEREST: <high|medium|low>
+RECON_NOTE: <observation needing follow-up in enumeration phase>
+End with: RECON_COMPLETE: <brief attack surface summary>"""
+
+ENUM_SYSTEM_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are in Phase 3: Enumeration.
+Analyze combined recon and enumeration data to map the attack surface.
+
+Format findings as:
+ENUM_FINDING: <what was found> | LOCATION: <url/path/share/endpoint> | INTEREST: <high|medium|low>
+ATTACK_VECTOR: <potential attack vector> | FINDING: <what enables it>
+End with: ENUM_COMPLETE: <top 3 priorities for vulnerability analysis>"""
+
+VULN_ANALYSIS_SYSTEM_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are in Phase 4: Vulnerability Analysis.
+Validate findings, filter false positives, chain vulnerabilities into attack paths.
+Assign CVSS scores (0.0-10.0 based on AV/AC/PR/UI/S/C/I/A).
+
+Use existing VULN:/DESC:/FIX: format plus:
+CVSS_SCORE: <0.0-10.0>
+FALSE_POSITIVE: NO
+
+Format attack paths as:
+ATTACK_PATH: <name>
+STEP_1: <first step>
+STEP_N: <final step>
+PATH_SEVERITY: <CRITICAL|HIGH|MEDIUM|LOW>
+PATH_NARRATIVE: <2-3 sentence plain-English description>
+
+End with RISK_LEVEL: and SUMMARY:"""
+
+EXPLOITATION_SYSTEM_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are in Phase 5: Exploitation Planning.
+Provide step-by-step exploitation guidance. The human operator executes — you plan only.
+
+Format as:
+EXPLOIT_PLAN: <vulnerability name>
+TOOL: <tool>
+COMMAND: <exact command or payload>
+EXPECTED_RESULT: <what success looks like>
+PRECONDITION: <what must be true>
+NOISE_LEVEL: <silent|low|medium|high>
+NOTES: <warnings or context>"""
+
+POST_EXPLOIT_SYSTEM_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are in Phase 6: Post-Exploitation Analysis.
+Suggest techniques to assess impact after initial compromise.
+Frame everything in terms of business impact.
+
+Format as:
+POST_EXPLOIT_TECHNIQUE: <technique> | TYPE: <privesc|lateral_movement|persistence|data_access>
+FROM: <current access level/host> | TO: <target access/host>
+METHOD: <how to do it>
+IMPACT: <business impact if successful>
+EVIDENCE_NEEDED: <what to capture as proof>"""
+
+EXECUTIVE_SUMMARY_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+Generate a professional executive summary for a penetration test report.
+No technical jargon in the first paragraph.
+
+Format:
+EXEC_SUMMARY_START
+<paragraph 1 — what was done, non-technical>
+<paragraph 2 — what was found at business level>
+<paragraph 3 — top 3 recommendations in plain language>
+<paragraph 4 — overall risk verdict>
+EXEC_SUMMARY_END"""
+
+RETEST_COMPARISON_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+Compare original pentest findings with retest findings.
+
+For each original vulnerability, output:
+RETEST_FINDING: <vuln name> | ORIGINAL_SEVERITY: <level> | STATUS: <FIXED|PARTIAL|NOT_FIXED|NOT_TESTED>
+RETEST_NOTE: <explanation>
+
+For new findings: NEW_FINDING: (use standard VULN: format)
+
+End with:
+REMEDIATION_SCORE: <0-100>
+RETEST_SUMMARY: <2-3 sentence overall assessment>"""
+
+CLOUD_AWS_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are in Phase 9: Cloud Assessment — AWS.
+Analyze AWS IAM, S3, EC2, security group, and CloudTrail data for security misconfigurations.
+
+Format findings as:
+CLOUD_FINDING: <what was found> | PROVIDER: aws | SERVICE: <iam|s3|ec2|cloudtrail|vpc>
+SEVERITY: <critical|high|medium|low|info> | RESOURCE: <resource id or name>
+DESCRIPTION: <what the issue is>
+RECOMMENDATION: <how to fix it>
+
+Rate attack path risk with:
+CLOUD_RISK: <critical|high|medium|low>
+CLOUD_SUMMARY: <2-3 sentence assessment>"""
+
+CLOUD_AZURE_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are in Phase 9: Cloud Assessment — Azure.
+Analyze Azure role assignments, NSGs, VMs, storage accounts, and Defender posture.
+
+Format findings as:
+CLOUD_FINDING: <what was found> | PROVIDER: azure | SERVICE: <iam|storage|compute|network|defender>
+SEVERITY: <critical|high|medium|low|info> | RESOURCE: <resource name>
+DESCRIPTION: <what the issue is>
+RECOMMENDATION: <how to fix it>
+
+End with:
+CLOUD_RISK: <critical|high|medium|low>
+CLOUD_SUMMARY: <2-3 sentence assessment>"""
+
+CLOUD_GCP_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are in Phase 9: Cloud Assessment — GCP.
+Analyze GCP IAM bindings, firewall rules, storage buckets, and Security Command Center findings.
+
+Format findings as:
+CLOUD_FINDING: <what was found> | PROVIDER: gcp | SERVICE: <iam|storage|compute|network|scc>
+SEVERITY: <critical|high|medium|low|info> | RESOURCE: <resource name>
+DESCRIPTION: <what the issue is>
+RECOMMENDATION: <how to fix it>
+
+End with:
+CLOUD_RISK: <critical|high|medium|low>
+CLOUD_SUMMARY: <2-3 sentence assessment>"""
+
+SEGMENTATION_ANALYSIS_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are in Phase 10: Segmentation Testing — PCI DSS Requirement 11.4.5.
+Analyze ncat/nc connectivity test results and determine segmentation compliance.
+
+For each test result, output:
+SEG_RESULT: <source> → <dest>:<port> | STATUS: <PASS|FAIL> | EXPECTED: <blocked|allowed>
+SEG_FINDING: <what this means for PCI DSS compliance>
+SEG_SEVERITY: <critical|high|medium|low>
+
+Failures where expected=blocked and actual=allowed are PCI DSS violations.
+
+End with:
+SEG_COMPLIANT: <YES|NO|PARTIAL>
+SEG_NARRATIVE: <2-3 sentence PCI 11.4.5 compliance narrative for the report>
+PCI_REQUIREMENT: 11.4.5"""
+
+EMPIRE_ANALYSIS_PROMPT = """You are METATRON, an elite AI penetration testing assistant.
+You are reviewing PowerShell Empire enumeration output from an authorised engagement.
+Analyze domain users, admin sessions, network topology, and privilege levels.
+
+Format findings as:
+EMPIRE_FINDING: <what was found> | TYPE: <user|host|privilege|network|credential_ref>
+RISK: <high|medium|low>
+LATERAL_PATH: <potential pivot path, if any>
+IMPACT: <business impact>
+
+End with:
+EMPIRE_SUMMARY: <attack path assessment based on Empire data>
+NOTE: All findings are from authorised testing within defined scope."""
+
+PHASE_PROMPTS = {
+    2: RECON_SYSTEM_PROMPT,
+    3: ENUM_SYSTEM_PROMPT,
+    4: VULN_ANALYSIS_SYSTEM_PROMPT,
+    5: EXPLOITATION_SYSTEM_PROMPT,
+    6: POST_EXPLOIT_SYSTEM_PROMPT,
+}
+
+CLOUD_PHASE_PROMPTS = {
+    "aws":   CLOUD_AWS_PROMPT,
+    "azure": CLOUD_AZURE_PROMPT,
+    "gcp":   CLOUD_GCP_PROMPT,
+}
+
+
+# ─────────────────────────────────────────────
+# PHASE-SPECIFIC ANALYSIS FUNCTIONS
+# ─────────────────────────────────────────────
+
+def build_engagement_context_string(engagement_id):
+    """Build scope summary string to prepend to every phase prompt."""
+    import db
+    e = db.get_engagement(engagement_id)
+    if not e:
+        return ""
+    scope = db.get_scope_items(engagement_id)
+    in_s = ", ".join(i["target"] for i in scope["in_scope"]) or "not defined"
+    out_s = ", ".join(i["target"] for i in scope["out_of_scope"]) or "none"
+    return (f"ENGAGEMENT: {e['engagement_name']}\n"
+            f"CLIENT: {e['client_name']}\n"
+            f"TEST_TYPE: {e['test_type']} box\n"
+            f"IN_SCOPE: {in_s}\n"
+            f"OUT_OF_SCOPE: {out_s}\n\n")
+
+
+def analyse_phase(target, scan_data, phase, engagement_id=None):
+    """
+    Phase-aware analysis using the correct system prompt.
+    Returns same structure as analyse_target() plus phase-specific keys.
+    """
+    system_prompt = PHASE_PROMPTS.get(phase, SYSTEM_PROMPT)
+    context_str = build_engagement_context_string(engagement_id) if engagement_id else ""
+    full_prompt = (f"{system_prompt}\n\n{context_str}"
+                   f"TARGET: {target}\n\nSCAN DATA:\n{scan_data}")
+    conversation = full_prompt
+    for _ in range(MAX_TOOL_LOOPS):
+        response = ask_ollama(conversation)
+        calls = extract_tool_calls(response)
+        if not calls:
+            break
+        tool_results = run_tool_calls(calls)
+        conversation += f"\n\n[TOOL RESULTS]\n{tool_results}\n\nContinue analysis:"
+    vulns = parse_vulnerabilities(response)
+    exploits = parse_exploits(response)
+    risk = parse_risk_level(response)
+    summary = parse_summary(response)
+    attack_paths = parse_attack_paths(response)
+    return {
+        "full_response": response,
+        "vulnerabilities": vulns,
+        "exploits": exploits,
+        "risk_level": risk,
+        "summary": summary,
+        "attack_paths": attack_paths,
+        "raw_scan": scan_data,
+        "phase": phase,
+    }
+
+
+def parse_attack_paths(response):
+    """Parse ATTACK_PATH: blocks from LLM response."""
+    paths = []
+    blocks = re.split(r'ATTACK_PATH:\s*', response)
+    for block in blocks[1:]:
+        lines = block.strip().split('\n')
+        path_name = lines[0].strip()
+        steps = []
+        severity = "high"
+        narrative = ""
+        for line in lines[1:]:
+            if re.match(r'STEP_\d+:', line):
+                steps.append(re.sub(r'^STEP_\d+:\s*', '', line).strip())
+            elif line.startswith("PATH_SEVERITY:"):
+                severity = re.sub(r'^PATH_SEVERITY:\s*', '', line).strip().lower()
+            elif line.startswith("PATH_NARRATIVE:"):
+                narrative = re.sub(r'^PATH_NARRATIVE:\s*', '', line).strip()
+        if path_name:
+            paths.append({"path_name": path_name, "steps": steps,
+                          "severity": severity, "narrative": narrative})
+    return paths
+
+
+def generate_executive_summary(engagement_data):
+    """Generate executive summary. Returns text between EXEC_SUMMARY markers."""
+    all_vulns = []
+    for session in engagement_data.get("sessions", []):
+        all_vulns.extend(session.get("vulnerabilities", []))
+    vuln_summary = "\n".join(
+        f"- {v['vuln_name']} ({v['severity']})" for v in all_vulns[:20]
+    )
+    prompt_text = (
+        f"{EXECUTIVE_SUMMARY_PROMPT}\n\n"
+        f"ENGAGEMENT: {engagement_data.get('engagement', {}).get('engagement_name', 'Unknown')}\n"
+        f"CLIENT: {engagement_data.get('engagement', {}).get('client_name', 'Unknown')}\n"
+        f"TOTAL VULNERABILITIES: {len(all_vulns)}\n"
+        f"FINDINGS:\n{vuln_summary}"
+    )
+    response = ask_ollama(prompt_text)
+    match = re.search(r'EXEC_SUMMARY_START\s*(.*?)\s*EXEC_SUMMARY_END', response, re.DOTALL)
+    return match.group(1).strip() if match else response[:1000]
+
+
+def compare_retest(original_data, retest_data):
+    """Compare two sessions. Returns comparison dict."""
+    orig_vulns = original_data.get("vulnerabilities", [])
+    retest_vulns = retest_data.get("vulnerabilities", [])
+    prompt_text = (
+        f"{RETEST_COMPARISON_PROMPT}\n\n"
+        f"ORIGINAL FINDINGS:\n" +
+        "\n".join(f"VULN: {v['vuln_name']} | SEVERITY: {v['severity']}" for v in orig_vulns) +
+        f"\n\nRETEST FINDINGS:\n" +
+        "\n".join(f"VULN: {v['vuln_name']} | SEVERITY: {v['severity']}" for v in retest_vulns)
+    )
+    response = ask_ollama(prompt_text)
+    comparisons = []
+    for match in re.finditer(
+        r'RETEST_FINDING:\s*(.+?)\s*\|\s*ORIGINAL_SEVERITY:\s*(.+?)\s*\|\s*STATUS:\s*(\w+)',
+        response
+    ):
+        comparisons.append({
+            "vuln_name": match.group(1).strip(),
+            "original_severity": match.group(2).strip(),
+            "status": match.group(3).strip(),
+        })
+    score_match = re.search(r'REMEDIATION_SCORE:\s*(\d+)', response)
+    summary_match = re.search(r'RETEST_SUMMARY:\s*(.+)', response)
+    return {
+        "findings_comparison": comparisons,
+        "new_findings": parse_vulnerabilities(response),
+        "remediation_score": int(score_match.group(1)) if score_match else 0,
+        "retest_summary": summary_match.group(1).strip() if summary_match else "",
+    }
+
+
+# ─────────────────────────────────────────────
+# CLOUD AND SEGMENTATION PARSERS
+# ─────────────────────────────────────────────
+
+def parse_cloud_findings(response):
+    """Parse CLOUD_FINDING: blocks from LLM response."""
+    findings = []
+    pattern = re.compile(
+        r'CLOUD_FINDING:\s*(.+?)\s*\|\s*PROVIDER:\s*(\w+)\s*\|\s*SERVICE:\s*(\w+)\s*\n'
+        r'SEVERITY:\s*(\w+)\s*\|\s*RESOURCE:\s*(.+?)\s*\n'
+        r'DESCRIPTION:\s*(.+?)\s*\n'
+        r'RECOMMENDATION:\s*(.+?)(?=\n\n|\nCLOUD_|\Z)',
+        re.DOTALL
+    )
+    for m in pattern.finditer(response):
+        findings.append({
+            "finding_title": m.group(1).strip(),
+            "provider": m.group(2).strip().lower(),
+            "service": m.group(3).strip().lower(),
+            "severity": m.group(4).strip().lower(),
+            "resource_id": m.group(5).strip(),
+            "description": m.group(6).strip(),
+            "recommendation": m.group(7).strip(),
+        })
+    return findings
+
+
+def parse_cloud_risk(response):
+    """Extract CLOUD_RISK level from LLM response."""
+    m = re.search(r'CLOUD_RISK:\s*(\w+)', response)
+    return m.group(1).lower() if m else "medium"
+
+
+def parse_cloud_summary(response):
+    """Extract CLOUD_SUMMARY from LLM response."""
+    m = re.search(r'CLOUD_SUMMARY:\s*(.+?)(?=\n[A-Z]|\Z)', response, re.DOTALL)
+    return m.group(1).strip() if m else ""
+
+
+def parse_seg_results(response):
+    """Parse SEG_RESULT: lines from LLM response."""
+    results = []
+    for m in re.finditer(
+        r'SEG_RESULT:\s*(.+?)\s*→\s*(.+?):(\d+)\s*\|\s*STATUS:\s*(\w+)\s*\|\s*EXPECTED:\s*(\w+)',
+        response
+    ):
+        results.append({
+            "source": m.group(1).strip(),
+            "dest_host": m.group(2).strip(),
+            "dest_port": int(m.group(3)),
+            "result": m.group(4).strip().upper(),
+            "expected": m.group(5).strip().lower(),
+        })
+    return results
+
+
+def parse_seg_compliant(response):
+    """Extract SEG_COMPLIANT from LLM response."""
+    m = re.search(r'SEG_COMPLIANT:\s*(\w+)', response)
+    return m.group(1).upper() if m else "PARTIAL"
+
+
+def parse_seg_narrative(response):
+    """Extract SEG_NARRATIVE from LLM response."""
+    m = re.search(r'SEG_NARRATIVE:\s*(.+?)(?=\nPCI_|\Z)', response, re.DOTALL)
+    return m.group(1).strip() if m else ""
+
+
+def parse_empire_findings(response):
+    """Parse EMPIRE_FINDING: blocks from LLM response."""
+    findings = []
+    for m in re.finditer(
+        r'EMPIRE_FINDING:\s*(.+?)\s*\|\s*TYPE:\s*(\w+)\s*\nRISK:\s*(\w+)',
+        response
+    ):
+        findings.append({
+            "finding": m.group(1).strip(),
+            "finding_type": m.group(2).strip(),
+            "risk": m.group(3).strip().lower(),
+        })
+    return findings
+
+
+def analyse_cloud(provider, cloud_data_str, engagement_id=None):
+    """
+    Run cloud-specific LLM analysis.
+    provider: 'aws' | 'azure' | 'gcp'
+    Returns dict with findings, risk, summary, full_response.
+    """
+    system_prompt = CLOUD_PHASE_PROMPTS.get(provider, CLOUD_AWS_PROMPT)
+    context_str = build_engagement_context_string(engagement_id) if engagement_id else ""
+    full_prompt = f"{system_prompt}\n\n{context_str}CLOUD DATA:\n{cloud_data_str}"
+    response = ask_ollama(full_prompt)
+    return {
+        "full_response": response,
+        "findings": parse_cloud_findings(response),
+        "risk_level": parse_cloud_risk(response),
+        "summary": parse_cloud_summary(response),
+        "provider": provider,
+    }
+
+
+def analyse_segmentation(seg_test_results_str, engagement_id=None):
+    """
+    Run segmentation analysis via LLM.
+    seg_test_results_str: formatted test results string.
+    Returns dict with compliance status, narrative, findings.
+    """
+    context_str = build_engagement_context_string(engagement_id) if engagement_id else ""
+    full_prompt = (f"{SEGMENTATION_ANALYSIS_PROMPT}\n\n{context_str}"
+                   f"SEGMENTATION TEST RESULTS:\n{seg_test_results_str}")
+    response = ask_ollama(full_prompt)
+    return {
+        "full_response": response,
+        "seg_results": parse_seg_results(response),
+        "compliant": parse_seg_compliant(response),
+        "narrative": parse_seg_narrative(response),
+    }

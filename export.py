@@ -419,3 +419,335 @@ if __name__ == "__main__":
         exit()
 
     export_menu(data)
+
+
+# ─────────────────────────────────────────────
+# PROFESSIONAL REPORT FUNCTIONS
+# ─────────────────────────────────────────────
+
+def build_evidence_appendix(evidence_list):
+    """Build reportlab story elements for evidence appendix."""
+    from reportlab.platypus import Paragraph, Spacer, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    styles = getSampleStyleSheet()
+    story = []
+    for ev in evidence_list:
+        story.append(Paragraph(f"<b>Evidence: {ev.get('label', 'unnamed')}</b>",
+                               styles['Normal']))
+        story.append(Paragraph(
+            f"Phase: {ev.get('phase', '')} | "
+            f"Type: {ev.get('evidence_type', '')} | "
+            f"Captured: {ev.get('captured_at', '')}",
+            styles['Normal']
+        ))
+        content = str(ev.get("content", ""))[:2000]
+        story.append(Paragraph(f"<pre>{content}</pre>", styles['Code']))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
+        story.append(Spacer(1, 4 * mm))
+    return story
+
+
+def _add_cloud_section_to_pdf(story, cloud_findings, styles):
+    """Add cloud findings section to a reportlab story list."""
+    from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    if not cloud_findings:
+        story.append(Paragraph("No cloud findings recorded.", styles["Normal"]))
+        return
+    SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
+    sorted_findings = sorted(
+        cloud_findings,
+        key=lambda f: (SEVERITY_ORDER.index(f.get("severity", "info")),
+                       f.get("provider", ""))
+    )
+    tdata = [["#", "Provider", "Service", "Finding", "Severity", "Resource"]]
+    for i, f in enumerate(sorted_findings, 1):
+        tdata.append([
+            str(i),
+            str(f.get("provider", "")).upper(),
+            str(f.get("service", "")),
+            str(f.get("finding_title", ""))[:45],
+            str(f.get("severity", "")).upper(),
+            str(f.get("resource_id", ""))[:30],
+        ])
+    t = Table(tdata, colWidths=[8*mm, 18*mm, 22*mm, 65*mm, 22*mm, 35*mm])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8f9fa")]),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 4*mm))
+    story.append(Paragraph("<b>Critical and High Findings Detail:</b>", styles["Normal"]))
+    for f in sorted_findings:
+        if f.get("severity") not in ("critical", "high"):
+            continue
+        story.append(Paragraph(
+            f"<b>{str(f.get('provider','')).upper()} — {f.get('finding_title','')} "
+            f"({str(f.get('severity','')).upper()})</b>",
+            styles["Normal"]
+        ))
+        if f.get("description"):
+            story.append(Paragraph(f"Finding: {f['description'][:500]}", styles["Normal"]))
+        if f.get("recommendation"):
+            story.append(Paragraph(f"Recommendation: {f['recommendation'][:300]}", styles["Normal"]))
+        story.append(Spacer(1, 2*mm))
+
+
+def _add_segmentation_section_to_pdf(story, seg_tests, styles):
+    """Add PCI 11.4.5 segmentation testing section to a reportlab story list."""
+    from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    story.append(Paragraph(
+        "PCI DSS Requirement 11.4.5 — Segmentation Validation Testing",
+        styles["Heading2"]
+    ))
+    if not seg_tests:
+        story.append(Paragraph("No segmentation tests recorded for this engagement.", styles["Normal"]))
+        return
+    pass_count = sum(1 for t in seg_tests if t.get("result") == "PASS")
+    fail_count = sum(1 for t in seg_tests if t.get("result") == "FAIL")
+    compliance = "COMPLIANT" if fail_count == 0 else "NON-COMPLIANT"
+    story.append(Paragraph(
+        f"Overall Compliance: <b>{compliance}</b> — {pass_count} PASS / {fail_count} FAIL",
+        styles["Normal"]
+    ))
+    story.append(Spacer(1, 3*mm))
+    tdata = [["Source", "Destination", "Port", "Protocol", "Expected", "Result", "Tool", "Date"]]
+    for t in seg_tests:
+        tdata.append([
+            str(t.get("source_host", ""))[:22],
+            str(t.get("dest_host", ""))[:22],
+            str(t.get("dest_port", "")),
+            str(t.get("protocol", "tcp")).upper(),
+            str(t.get("expected", "")).upper(),
+            str(t.get("result", "ERROR")),
+            str(t.get("tool_used", ""))[:10],
+            str(t.get("tested_at", ""))[:10] if t.get("tested_at") else "",
+        ])
+    t_table = Table(tdata, colWidths=[30*mm, 30*mm, 12*mm, 16*mm, 18*mm, 14*mm, 15*mm, 22*mm])
+    table_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+    ]
+    for row_idx, t in enumerate(seg_tests, start=1):
+        if t.get("result") == "FAIL":
+            table_style.append(("BACKGROUND", (5, row_idx), (5, row_idx),
+                                 colors.HexColor("#fde8e8")))
+        else:
+            table_style.append(("BACKGROUND", (5, row_idx), (5, row_idx),
+                                 colors.HexColor("#e8fde8")))
+    t_table.setStyle(TableStyle(table_style))
+    story.append(t_table)
+    story.append(Spacer(1, 3*mm))
+    tester_names = list({t.get("tester_name", "unknown") for t in seg_tests if t.get("tester_name")})
+    story.append(Paragraph(
+        f"Tester: {', '.join(tester_names)} | Tool chain: ncat → nc → python_socket",
+        styles["Normal"]
+    ))
+
+
+def export_professional_pdf(engagement_data, output_dir, include_pci=False):
+    """
+    Full professional PDF report covering all 10 phases of data.
+    engagement_data: dict with keys 'engagement' and 'sessions'.
+    Returns output file path.
+    """
+    import os
+    import db as _db
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                    Table, TableStyle, HRFlowable, PageBreak)
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    e = engagement_data.get("engagement", {})
+    sessions = engagement_data.get("sessions", [])
+    all_vulns, all_exploits, all_post_exploit, all_attack_paths, all_evidence = [], [], [], [], []
+    for s in sessions:
+        sl_no = s["history"][0]
+        all_vulns.extend(s.get("vulnerabilities", []))
+        all_exploits.extend(s.get("exploits", []))
+        all_post_exploit.extend(_db.get_post_exploitation(sl_no))
+        all_attack_paths.extend(_db.get_attack_paths(sl_no))
+        all_evidence.extend(_db.get_evidence(sl_no))
+    cloud_findings = _db.get_cloud_findings(sessions[0]["history"][0]) if sessions else []
+    seg_tests = _db.get_segmentation_tests(sessions[0]["history"][0]) if sessions else []
+    os.makedirs(output_dir, exist_ok=True)
+    client_safe = "".join(c if c.isalnum() else "_" for c in e.get("client_name", "unknown"))
+    filename = os.path.join(output_dir, f"metatron_professional_{client_safe}.pdf")
+    doc = SimpleDocTemplate(filename, pagesize=A4,
+                            leftMargin=20*mm, rightMargin=20*mm,
+                            topMargin=25*mm, bottomMargin=25*mm)
+    styles = getSampleStyleSheet()
+    H1 = ParagraphStyle("H1", parent=styles["Heading1"], textColor=colors.HexColor("#c0392b"))
+    H2 = ParagraphStyle("H2", parent=styles["Heading2"], textColor=colors.HexColor("#2c3e50"))
+    story = []
+    # Cover
+    story.append(Spacer(1, 30*mm))
+    story.append(Paragraph("PENETRATION TEST REPORT", H1))
+    story.append(Paragraph(e.get("engagement_name", ""), styles["Heading2"]))
+    story.append(Spacer(1, 5*mm))
+    story.append(Paragraph(f"Client: {e.get('client_name', '')}", styles["Normal"]))
+    story.append(Paragraph(f"Test Type: {e.get('test_type', '')} box", styles["Normal"]))
+    story.append(Paragraph(
+        f"Dates: {e.get('start_date', '')} — {e.get('end_date', '')}", styles["Normal"]
+    ))
+    story.append(PageBreak())
+    # Executive Summary
+    story.append(Paragraph("Executive Summary", H1))
+    exec_summary = next(
+        (ev.get("content", "") for ev in all_evidence if ev.get("label") == "Executive Summary"),
+        "Executive summary not generated. Run Phase 7 to generate."
+    )
+    story.append(Paragraph(exec_summary, styles["Normal"]))
+    story.append(PageBreak())
+    # Scope
+    story.append(Paragraph("Scope & Methodology", H1))
+    scope = _db.get_scope_items(e.get("id", 0)) if e.get("id") else {"in_scope": [], "out_of_scope": []}
+    story.append(Paragraph("<b>In Scope:</b>", styles["Normal"]))
+    for s in scope["in_scope"]:
+        story.append(Paragraph(f"• {s['target']} — {s.get('description', '')}", styles["Normal"]))
+    story.append(Paragraph("<b>Out of Scope:</b>", styles["Normal"]))
+    for s in scope["out_of_scope"]:
+        story.append(Paragraph(f"• {s['target']}", styles["Normal"]))
+    story.append(PageBreak())
+    # Findings Summary
+    story.append(Paragraph("Findings Summary", H1))
+    if all_vulns:
+        tdata = [["#", "Vulnerability", "Severity", "Port", "Service"]]
+        for i, v in enumerate(all_vulns, 1):
+            tdata.append([str(i), str(v[2])[:40], str(v[3]), str(v[4]), str(v[5])])
+        t = Table(tdata, colWidths=[10*mm, 80*mm, 25*mm, 20*mm, 35*mm])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ]))
+        story.append(t)
+    else:
+        story.append(Paragraph("No vulnerabilities recorded.", styles["Normal"]))
+    # Attack Paths
+    if all_attack_paths:
+        story.append(PageBreak())
+        story.append(Paragraph("Attack Paths", H1))
+        for ap in all_attack_paths:
+            story.append(Paragraph(
+                f"<b>{ap['path_name']}</b> ({str(ap['severity']).upper()})", H2
+            ))
+            story.append(Paragraph(ap.get("ai_narrative", ""), styles["Normal"]))
+            for i, step in enumerate(ap.get("steps", []), 1):
+                story.append(Paragraph(f"Step {i}: {step}", styles["Normal"]))
+            story.append(Spacer(1, 3*mm))
+    # Post-Exploitation
+    if all_post_exploit:
+        story.append(PageBreak())
+        story.append(Paragraph("Post-Exploitation Findings", H1))
+        for pe in all_post_exploit:
+            status = "SUCCESS" if pe.get("success") else "ATTEMPTED"
+            story.append(Paragraph(
+                f"<b>{pe['technique']}</b> — {pe['technique_type']} [{status}]", H2
+            ))
+            story.append(Paragraph(
+                f"{pe.get('from_user', '')} on {pe.get('from_host', '')} → "
+                f"{pe.get('to_user', '')} on {pe.get('to_host', '')}",
+                styles["Normal"]
+            ))
+            if pe.get("evidence_notes"):
+                story.append(Paragraph(pe["evidence_notes"][:500], styles["Normal"]))
+    # Cloud Findings
+    if cloud_findings:
+        story.append(PageBreak())
+        story.append(Paragraph("Cloud Security Findings", H1))
+        _add_cloud_section_to_pdf(story, cloud_findings, styles)
+    # Segmentation Testing
+    if seg_tests:
+        story.append(PageBreak())
+        story.append(Paragraph("Network Segmentation Testing", H1))
+        _add_segmentation_section_to_pdf(story, seg_tests, styles)
+    # Evidence Appendix
+    if all_evidence:
+        story.append(PageBreak())
+        story.append(Paragraph("Evidence Appendix", H1))
+        story.extend(build_evidence_appendix(all_evidence))
+    # PCI DSS Appendix
+    if include_pci:
+        story.append(PageBreak())
+        story.append(Paragraph("PCI DSS 4.0.1 Mapping", H1))
+        pci_rows = [
+            ["Requirement", "Coverage", "Notes"],
+            ["11.4.1 External Penetration Test", "Covered", "External targets tested per scope"],
+            ["11.4.2 Internal Penetration Test", "See scope", "Internal testing if in scope"],
+            ["11.4.3 Segmentation Testing", "See scope", "Add segmentation test results here"],
+            ["11.4.4 Pentest Corrections", "Remediation required", "See findings for required fixes"],
+        ]
+        t = Table(pci_rows, colWidths=[70*mm, 35*mm, 65*mm])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ]))
+        story.append(t)
+    doc.build(story)
+    return filename
+
+
+def export_retest_report_pdf(original_data, retest_data, comparison, output_dir):
+    """Retest comparison PDF report."""
+    import os
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle)
+    from reportlab.lib.styles import getSampleStyleSheet
+    os.makedirs(output_dir, exist_ok=True)
+    filename = os.path.join(output_dir,
+                            f"metatron_retest_SL{original_data['history'][0]}.pdf")
+    doc = SimpleDocTemplate(filename, pagesize=A4,
+                            leftMargin=20*mm, rightMargin=20*mm,
+                            topMargin=25*mm, bottomMargin=25*mm)
+    styles = getSampleStyleSheet()
+    story = []
+    story.append(Paragraph("RETEST REPORT", styles["Heading1"]))
+    story.append(Paragraph(
+        f"Original scan: SL#{original_data['history'][0]} | "
+        f"Target: {original_data['history'][1]} | "
+        f"Date: {original_data['history'][2]}",
+        styles["Normal"]
+    ))
+    story.append(Paragraph(
+        f"Remediation score: {comparison.get('remediation_score', 0)}%",
+        styles["Heading2"]
+    ))
+    story.append(Spacer(1, 5*mm))
+    tdata = [["Vulnerability", "Original Severity", "Status"]]
+    STATUS_ICONS = {"FIXED": "✓ FIXED", "PARTIAL": "~ PARTIAL",
+                    "NOT_FIXED": "✗ NOT FIXED", "NOT_TESTED": "? NOT TESTED"}
+    for fc in comparison.get("findings_comparison", []):
+        tdata.append([
+            str(fc["vuln_name"])[:50],
+            str(fc.get("original_severity", "")),
+            STATUS_ICONS.get(fc["status"], fc["status"]),
+        ])
+    t = Table(tdata, colWidths=[90*mm, 35*mm, 45*mm])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 5*mm))
+    story.append(Paragraph(comparison.get("retest_summary", ""), styles["Normal"]))
+    doc.build(story)
+    return filename

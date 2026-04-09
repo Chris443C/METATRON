@@ -338,6 +338,247 @@ def print_session(data: dict):
 # QUICK CONNECTION TEST
 # ─────────────────────────────────────────────
 
+# ─────────────────────────────────────────────
+# ENGAGEMENT FUNCTIONS
+# ─────────────────────────────────────────────
+
+def create_engagement(client_name, engagement_name, test_type,
+                      start_date, end_date, testing_window, notes=""):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO engagements (client_name, engagement_name, test_type, "
+        "start_date, end_date, testing_window, status, created_at, notes) "
+        "VALUES (%s,%s,%s,%s,%s,%s,'planning',%s,%s)",
+        (client_name, engagement_name, test_type, start_date or None,
+         end_date or None, testing_window, datetime.now(), notes)
+    )
+    conn.commit()
+    eid = cur.lastrowid
+    conn.close()
+    return eid
+
+
+def get_engagement(engagement_id):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM engagements WHERE id=%s", (engagement_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def get_all_engagements():
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM engagements ORDER BY created_at DESC")
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def update_engagement_status(engagement_id, status):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE engagements SET status=%s WHERE id=%s", (status, engagement_id))
+    conn.commit()
+    conn.close()
+
+
+def add_scope_item(engagement_id, item_type, target, description=""):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO scope_items (engagement_id, item_type, target, description) VALUES (%s,%s,%s,%s)",
+        (engagement_id, item_type, target, description)
+    )
+    conn.commit()
+    iid = cur.lastrowid
+    conn.close()
+    return iid
+
+
+def get_scope_items(engagement_id):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM scope_items WHERE engagement_id=%s", (engagement_id,))
+    rows = cur.fetchall()
+    conn.close()
+    in_scope = [r for r in rows if r["item_type"] == "in_scope"]
+    out_scope = [r for r in rows if r["item_type"] == "out_of_scope"]
+    return {"in_scope": in_scope, "out_of_scope": out_scope}
+
+
+def link_session_to_engagement(sl_no, engagement_id, phase="recon"):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE history SET engagement_id=%s, phase=%s WHERE sl_no=%s",
+        (engagement_id, phase, sl_no)
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_evidence(sl_no, engagement_id, phase, evidence_type, label, content):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO evidence (sl_no, engagement_id, phase, evidence_type, label, content, captured_at) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+        (sl_no, engagement_id, phase, evidence_type, label, content, datetime.now())
+    )
+    conn.commit()
+    eid = cur.lastrowid
+    conn.close()
+    return eid
+
+
+def get_evidence(sl_no):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM evidence WHERE sl_no=%s ORDER BY captured_at", (sl_no,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def save_post_exploitation(sl_no, engagement_id, technique, technique_type,
+                           from_host, to_host, from_user, to_user, success, evidence_notes):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO post_exploitation (sl_no, engagement_id, technique, technique_type, "
+        "from_host, to_host, from_user, to_user, success, evidence_notes, captured_at) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (sl_no, engagement_id, technique, technique_type, from_host, to_host,
+         from_user, to_user, success, evidence_notes, datetime.now())
+    )
+    conn.commit()
+    pid = cur.lastrowid
+    conn.close()
+    return pid
+
+
+def get_post_exploitation(sl_no):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM post_exploitation WHERE sl_no=%s ORDER BY captured_at", (sl_no,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def save_attack_path(sl_no, engagement_id, path_name, steps, severity, cvss_score, ai_narrative):
+    import json
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO attack_paths (sl_no, engagement_id, path_name, steps, severity, "
+        "cvss_score, ai_narrative, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+        (sl_no, engagement_id, path_name, json.dumps(steps), severity,
+         cvss_score, ai_narrative, datetime.now())
+    )
+    conn.commit()
+    aid = cur.lastrowid
+    conn.close()
+    return aid
+
+
+def get_attack_paths(sl_no):
+    import json
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM attack_paths WHERE sl_no=%s ORDER BY cvss_score DESC", (sl_no,))
+    rows = cur.fetchall()
+    conn.close()
+    for r in rows:
+        r["steps"] = json.loads(r["steps"]) if r["steps"] else []
+    return rows
+
+
+def create_retest_session(original_sl_no, retest_sl_no, engagement_id, overall_result, notes=""):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO retest_sessions (original_sl_no, retest_sl_no, engagement_id, "
+        "retested_at, overall_result, notes) VALUES (%s,%s,%s,%s,%s,%s)",
+        (original_sl_no, retest_sl_no, engagement_id, datetime.now(), overall_result, notes)
+    )
+    conn.commit()
+    rid = cur.lastrowid
+    conn.close()
+    return rid
+
+
+def get_retest_sessions(original_sl_no):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM retest_sessions WHERE original_sl_no=%s ORDER BY retested_at DESC",
+                (original_sl_no,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+# ─────────────────────────────────────────────
+# CLOUD FINDINGS FUNCTIONS
+# ─────────────────────────────────────────────
+
+def save_cloud_finding(sl_no, engagement_id, provider, service, finding_title,
+                       severity, resource_id, region, description, recommendation,
+                       raw_output, tool_used):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO cloud_findings (sl_no, engagement_id, provider, service, finding_title, "
+        "severity, resource_id, region, description, recommendation, raw_output, "
+        "tool_used, captured_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (sl_no, engagement_id, provider, service, finding_title, severity,
+         resource_id or "", region or "", description or "", recommendation or "",
+         raw_output or "", tool_used, datetime.now())
+    )
+    conn.commit()
+    fid = cur.lastrowid
+    conn.close()
+    return fid
+
+
+def get_cloud_findings(sl_no):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM cloud_findings WHERE sl_no=%s ORDER BY severity, provider", (sl_no,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def save_segmentation_test(sl_no, engagement_id, source_host, dest_host, dest_port,
+                           protocol, expected, result, tool_used, raw_output, tester_name):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO segmentation_tests (sl_no, engagement_id, source_host, dest_host, "
+        "dest_port, protocol, expected, result, tool_used, raw_output, tester_name, tested_at) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (sl_no, engagement_id, source_host, dest_host, dest_port, protocol,
+         expected, result, tool_used, raw_output or "", tester_name or "", datetime.now())
+    )
+    conn.commit()
+    tid = cur.lastrowid
+    conn.close()
+    return tid
+
+
+def get_segmentation_tests(sl_no):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM segmentation_tests WHERE sl_no=%s ORDER BY tested_at", (sl_no,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
 if __name__ == "__main__":
     try:
         conn = get_connection()

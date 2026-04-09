@@ -136,13 +136,59 @@ def run_nikto(target: str) -> str:
 # MAIN RECON PIPELINE
 # ─────────────────────────────────────────────
 
+# ─────────────────────────────────────────────
+# PHASE A — ADDITIONAL RECON TOOLS
+# ─────────────────────────────────────────────
+
+def run_sublist3r(target):
+    """Subdomain enumeration via sublist3r."""
+    return run_tool(["sublist3r", "-d", target, "-t", "20"], timeout=120)
+
+
+def run_theharvester(target):
+    """OSINT: emails, subdomains, hosts via theHarvester (free sources only)."""
+    return run_tool(["theHarvester", "-d", target, "-b", "duckduckgo,bing", "-l", "200"], timeout=120)
+
+
+def run_gobuster_dirs(target):
+    """Web directory brute force via gobuster."""
+    wordlist = "/usr/share/wordlists/dirb/common.txt"
+    url = target if target.startswith("http") else f"http://{target}"
+    return run_tool(["gobuster", "dir", "-u", url, "-w", wordlist, "-t", "30", "-q"], timeout=300)
+
+
+def run_dirb(target):
+    """Web directory brute force via dirb (alternative to gobuster)."""
+    url = target if target.startswith("http") else f"http://{target}"
+    return run_tool(["dirb", url, "/usr/share/wordlists/dirb/common.txt", "-S", "-r"], timeout=300)
+
+
+def run_masscan(target):
+    """Fast full-port scan via masscan (requires sudo)."""
+    return run_tool(["sudo", "masscan", target, "-p", "1-65535", "--rate=1000"], timeout=120)
+
+
+def run_ffuf(target):
+    """Fast web fuzzer via ffuf."""
+    wordlist = "/usr/share/wordlists/dirb/common.txt"
+    url = target if target.startswith("http") else f"http://{target}"
+    return run_tool(["ffuf", "-u", f"{url}/FUZZ", "-w", wordlist,
+                     "-mc", "200,301,302,403", "-s"], timeout=300)
+
+
 TOOLS_MENU = {
-    "1": ("nmap",         run_nmap),
-    "2": ("whois",        run_whois),
-    "3": ("whatweb",      run_whatweb),
-    "4": ("curl headers", run_curl_headers),
-    "5": ("dig DNS",      run_dig),
-    "6": ("nikto",        run_nikto),
+    "1":  ("nmap",                          run_nmap),
+    "2":  ("whois",                         run_whois),
+    "3":  ("whatweb",                       run_whatweb),
+    "4":  ("curl headers",                  run_curl_headers),
+    "5":  ("dig DNS",                       run_dig),
+    "6":  ("nikto",                         run_nikto),
+    "7":  ("sublist3r (subdomain enum)",    run_sublist3r),
+    "8":  ("theHarvester (OSINT)",          run_theharvester),
+    "9":  ("gobuster (web dirs)",           run_gobuster_dirs),
+    "10": ("dirb (web dirs alt)",           run_dirb),
+    "11": ("masscan (fast portscan)",       run_masscan),
+    "12": ("ffuf (web fuzzer)",             run_ffuf),
 }
 
 

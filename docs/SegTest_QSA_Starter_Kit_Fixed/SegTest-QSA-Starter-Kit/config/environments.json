@@ -1,0 +1,24 @@
+{
+  "Environments": [
+    {
+      "Name": "Production",
+      "Type": "OnPrem",
+      "Description": "Primary production environment containing CDE-adjacent systems"
+    },
+    {
+      "Name": "Azure",
+      "Type": "Cloud",
+      "Description": "Azure estate for application hosting and management"
+    },
+    {
+      "Name": "AWS",
+      "Type": "Cloud",
+      "Description": "AWS estate for workloads and network segmentation validation"
+    },
+    {
+      "Name": "Kubernetes",
+      "Type": "Container",
+      "Description": "Container platform with namespace and network policy controls"
+    }
+  ]
+}

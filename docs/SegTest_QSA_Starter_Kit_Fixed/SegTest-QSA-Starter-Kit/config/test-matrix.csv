@@ -1,0 +1,6 @@
+TestID,SourceName,SourceType,DestinationName,DestinationIP,Port,Protocol,ExpectedResult,Environment,Notes
+T001,Corporate-LAN,OnPrem,CDE-Web01,10.10.20.15,443,TCP,Blocked,Production,Corporate should not reach CDE web
+T002,JumpHost-01,JumpHost,CDE-Web01,10.10.20.15,443,TCP,Allowed,Production,Approved admin path
+T003,Guest-WiFi,OnPrem,CDE-DB01,10.10.20.25,1433,TCP,Blocked,Production,Guest network isolation validation
+T004,Admin-Workstation,OnPrem,DomainController01,10.10.30.10,3389,TCP,Blocked,Production,Direct RDP to DC should be blocked
+T005,K8s-TestPod,Kubernetes,Payment-API,10.70.8.12,443,TCP,Blocked,Kubernetes,Namespace isolation check
