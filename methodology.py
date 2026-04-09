@@ -459,6 +459,36 @@ def phase_9_cloud_assessment(engagement_id, sl_no):
             all_cloud_findings.append(f)
         success(f"{provider.upper()}: {len(result.get('findings', []))} findings | "
                 f"Risk: {result.get('risk_level', 'unknown').upper()}")
+
+        # Optional Prowler deep compliance scan — AWS only
+        if provider == "aws":
+            answer = input("\n  Run Prowler deep compliance scan? [y/N]: ").strip().lower()
+            if answer == "y":
+                info("Running Prowler AWS compliance scan (this may take 5-10 minutes)...")
+                prowler_out = cloud_tools.aws_run_prowler()
+                error_strings = ("not installed", "Timeout", "Error", "Tool not found")
+                if any(x in prowler_out[:50] for x in error_strings):
+                    warn(f"Prowler skipped: {prowler_out[:200]}")
+                else:
+                    db.save_evidence(sl_no, engagement_id, "prowler_scan",
+                                     "command_output",
+                                     "Prowler AWS compliance scan", prowler_out)
+                    info("Running AI analysis for Prowler results...")
+                    prowler_result = llm.analyse_cloud("aws (prowler)", prowler_out,
+                                                       engagement_id)
+                    for f in prowler_result.get("findings", []):
+                        db.save_cloud_finding(
+                            sl_no, engagement_id, "aws",
+                            f.get("service", "unknown"), f.get("finding_title", ""),
+                            f.get("severity", "medium"), f.get("resource_id", ""),
+                            f.get("region", ""), f.get("description", ""),
+                            f.get("recommendation", ""), prowler_out[:5000],
+                            "prowler+llm"
+                        )
+                        all_cloud_findings.append(f)
+                    success(f"Prowler: {len(prowler_result.get('findings', []))} findings | "
+                            f"Risk: {prowler_result.get('risk_level', 'unknown').upper()}")
+
     info(f"Phase 9 complete. Total cloud findings: {len(all_cloud_findings)}")
     return all_cloud_findings
 
