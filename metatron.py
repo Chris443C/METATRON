@@ -520,7 +520,7 @@ def main_menu():
         if choice == "1":
             import methodology
             import engagement as eng
-            eid = eng.select_or_create_engagement()
+            eid = eng.new_engagement_wizard()
             if eid:
                 methodology.run_methodology_workflow(eid)
             input("\n\033[90mPress Enter to continue...\033[0m")
