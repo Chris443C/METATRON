@@ -49,16 +49,19 @@ def run_tool(command: list, timeout: int = 120) -> str:
 # INDIVIDUAL TOOLS
 # ─────────────────────────────────────────────
 
-def run_nmap(target: str) -> str:
+def run_nmap(target: str, port: str = None) -> str:
     """
     nmap -sV -sC -T4 --open
     -sV  : detect service versions
     -sC  : run default scripts (basic vuln checks)
     -T4  : aggressive timing (faster)
     --open : only show open ports
+    port : optional specific port to scan (adds -p flag)
     """
-    print(f"  [*] nmap -sV -sC -T4 --open {target}")
-    return run_tool(["nmap", "-sV", "-sC", "-T4", "--open", target], timeout=180)
+    port_flag = ["-p", port] if port else []
+    cmd = ["nmap", "-sV", "-sC", "-T4", "--open"] + port_flag + [target]
+    print(f"  [*] {' '.join(cmd)}")
+    return run_tool(cmd, timeout=180)
 
 
 def run_whois(target: str) -> str:
@@ -301,10 +304,11 @@ def parse_target(target_str: str):
 # INTERACTIVE TOOL SELECTOR (called from CLI)
 # ─────────────────────────────────────────────
 
-def interactive_tool_run(target: str) -> str:
+def interactive_tool_run(target: str, port: str = None) -> str:
     """
     Let user manually pick which tools to run.
     Returns combined output string.
+    port: optional port extracted from host:port notation — routed per tool.
     """
     print("\n[ SELECT TOOLS TO RUN ]")
     for key, (name, _) in TOOLS_MENU.items():
@@ -314,23 +318,33 @@ def interactive_tool_run(target: str) -> str:
 
     choice = input("\nChoice(s) e.g. 1 2 4 or a: ").strip().lower()
 
-    NIKTO_KEY = "6"
+    # whois, dig, sublist3r, theHarvester, masscan — accept host only, no port support
+    HOST_ONLY_TOOLS = {"2", "5", "7", "8", "11"}
+    target_with_port = f"{target}:{port}" if port else target
 
+    def call_tool(key, name, func):
+        print(f"\n[*] Running {name}...")
+        if key == "1":                    # nmap — inject port via -p flag
+            return run_nmap(target, port)
+        elif key in HOST_ONLY_TOOLS:      # host-only tools — bare host
+            return func(target)
+        else:                             # URL-capable tools — pass host:port
+            return func(target_with_port)
+
+    NIKTO_KEY = "6"
     if choice in ("a", "n"):
         combined = {}
         for key, (name, func) in TOOLS_MENU.items():
             if choice == "a" and key == NIKTO_KEY:
                 continue  # skip nikto for [a]
-            print(f"\n[*] Running {name}...")
-            combined[name] = func(target)
+            combined[name] = call_tool(key, name, func)
         return format_recon_for_llm(combined)
 
     combined = {}
     for key in choice.split():
         if key in TOOLS_MENU:
             name, func = TOOLS_MENU[key]
-            print(f"\n[*] Running {name}...")
-            combined[name] = func(target)
+            combined[name] = call_tool(key, name, func)
         else:
             print(f"[!] Unknown option: {key}")
 

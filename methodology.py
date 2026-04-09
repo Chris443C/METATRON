@@ -198,13 +198,13 @@ def phase_2_recon(engagement_id):
     if not target or target.strip().lower() == "back":
         return None, ""
 
-    # Sanitize host:port notation — recon tools expect bare host/IP
+    # Parse host:port — route port per-tool in interactive_tool_run
     host, detected_port = tools.parse_target(target)
+    target = host
     if detected_port:
-        warn(f"Port notation detected in target: {target}")
-        warn(f"Using '{host}' as the recon target (port {detected_port} stripped).")
-        warn(f"To target a specific port, choose nmap [1] from the tool menu.")
-        target = host
+        info(f"Port {detected_port} detected — nmap will use -p {detected_port}, "
+             f"URL tools will target {host}:{detected_port}, "
+             f"DNS/OSINT tools will use {host}")
 
     in_scope, reason = eng.check_target_in_scope(target, engagement_id)
     if not in_scope:
@@ -213,7 +213,7 @@ def phase_2_recon(engagement_id):
             return None, ""
     elif "caution" in reason:
         warn(f"Scope warning: {reason}")
-    raw_scan = interactive_tool_run(target)
+    raw_scan = tools.interactive_tool_run(target, port=detected_port)
     sl_no = db.create_session(target)
     db.link_session_to_engagement(sl_no, engagement_id, "recon")
     db.save_evidence(sl_no, engagement_id, "recon", "command_output",
