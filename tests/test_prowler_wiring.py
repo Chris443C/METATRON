@@ -13,7 +13,16 @@ def _is_prowler_error(output: str) -> bool:
     return any(x in output[:50] for x in _PROWLER_ERROR_STRINGS)
 
 
-def test_not_installed_is_detected():
+def test_prowler_not_installed_is_detected():
+    # This is the actual message returned by cloud_tools.aws_run_prowler()
+    # when shutil.which("prowler") returns None
+    msg = "Prowler not installed. Install: pip install prowler"
+    assert _is_prowler_error(msg)
+
+
+def test_tool_not_found_is_detected():
+    # This is the message returned by _run() if prowler binary is missing
+    # (fallback path)
     msg = "Tool not found: prowler"
     assert _is_prowler_error(msg)
 

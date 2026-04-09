@@ -6,6 +6,7 @@ import shutil
 
 
 # Prowler output prefixes that indicate a tool error rather than scan results.
+# Only the first 50 characters of output are checked — these strings always appear at the start.
 _PROWLER_ERROR_STRINGS = ("not installed", "Timeout", "Error: ", "Tool not found")
 
 
