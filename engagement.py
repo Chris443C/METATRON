@@ -4,13 +4,18 @@ import db
 
 
 def new_engagement_wizard():
-    """Interactive wizard to create a new engagement. Returns engagement_id."""
+    """Interactive wizard to create a new engagement. Returns engagement_id or None if cancelled."""
     from metatron import prompt, success, warn, info, divider, confirm
     divider()
     info("NEW ENGAGEMENT SETUP — Phase 1: Pre-Engagement")
+    info("Type 'back' at any prompt to cancel and return to main menu.")
     divider()
     client_name = prompt("Client name: ")
+    if client_name.strip().lower() == "back":
+        return None
     engagement_name = prompt("Engagement name (e.g. External Pentest Q2 2025): ")
+    if engagement_name.strip().lower() == "back":
+        return None
     print("\n  Test type:")
     print("  [1] Black box (no prior knowledge)")
     print("  [2] Grey box (partial knowledge)")

@@ -46,9 +46,9 @@ def run_methodology_workflow(engagement_id):
         print()
         for num, name in PHASES.items():
             print(f"  [{num:>2}] Phase {num} — {name}")
-        print("   [s] Save & exit engagement")
-        choice = input("\n  Select phase: ").strip()
-        if choice == "s":
+        print("   [b] Back to main menu (progress saved)")
+        choice = input("\n  Select phase: ").strip().lower()
+        if choice in ("b", "s", "back"):
             db.update_engagement_status(
                 engagement_id, "reporting" if 6 in completed else "active"
             )
@@ -184,7 +184,10 @@ def phase_3_enumeration(engagement_id, sl_no, raw_scan):
     print("  [3] LDAP enumeration (nmap)")
     print("  [4] API endpoint discovery")
     print("  [a] All")
+    print("  [b] Back to phase menu")
     choice = input("  Choice(s) e.g. '1 3' or 'a': ").strip().lower()
+    if choice == "b":
+        return ""
     options = {
         "web_dirs":      "a" in choice or "1" in choice,
         "smb":           "a" in choice or "2" in choice,
@@ -335,7 +338,10 @@ def phase_9_cloud_assessment(engagement_id, sl_no):
     print("  [2] Azure")
     print("  [3] GCP")
     print("  [a] All available")
+    print("  [b] Back to phase menu")
     choice = input("  Choice(s) e.g. '1 2' or 'a': ").strip().lower()
+    if choice == "b":
+        return []
     providers_to_test = []
     if "a" in choice or "1" in choice:
         ok, msg = cloud_tools.validate_aws_credentials()
