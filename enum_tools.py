@@ -5,12 +5,27 @@ import tools
 
 def run_enum4linux(target):
     """SMB/NetBIOS enumeration. Returns structured dict."""
+    import shutil
+    if not shutil.which("enum4linux"):
+        raw = ("[!] enum4linux not found.\n"
+               "Install: cd /opt && sudo git clone https://github.com/CiscoCXSecurity/enum4linux.git "
+               "&& sudo ln -s /opt/enum4linux/enum4linux.pl /usr/local/bin/enum4linux\n"
+               "Falling back to nmap SMB scripts...")
+        print(f"  [!] enum4linux not installed — trying nmap SMB scripts instead")
+        nmap_raw = tools.run_tool([
+            "nmap", "--script",
+            "smb-enum-shares,smb-enum-users,smb-vuln-ms17-010",
+            target
+        ], timeout=120)
+        return {"raw_output": raw + "\n\nNMAP SMB OUTPUT:\n" + nmap_raw, "tool": "nmap-smb-fallback"}
+    print(f"  [*] enum4linux -a {target}")
     raw = tools.run_tool(["enum4linux", "-a", target], timeout=180)
     return {"raw_output": raw, "tool": "enum4linux"}
 
 
 def run_smb_nmap_scripts(target):
     """SMB enumeration via nmap scripts."""
+    print(f"  [*] nmap SMB scripts on {target}")
     raw = tools.run_tool([
         "nmap", "--script",
         "smb-enum-shares,smb-enum-users,smb-vuln-ms17-010",
@@ -21,12 +36,13 @@ def run_smb_nmap_scripts(target):
 
 def run_api_discovery(target):
     """Probe common API and doc paths via HTTP HEAD requests."""
+    print(f"  [*] API endpoint discovery on {target}")
     try:
         import requests
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     except ImportError:
-        return {"found_endpoints": [], "raw_output": "requests library not installed", "tool": "api_discovery"}
+        return {"found_endpoints": [], "raw_output": "[!] requests library not installed: pip install requests", "tool": "api_discovery"}
 
     base = target if target.startswith("http") else f"http://{target}"
     paths = ["/api", "/api/v1", "/api/v2", "/swagger", "/swagger.json",
@@ -39,6 +55,7 @@ def run_api_discovery(target):
             r = requests.head(url, timeout=5, allow_redirects=True, verify=False)
             if r.status_code not in (404, 410):
                 found.append({"url": url, "status": r.status_code})
+                print(f"    [{r.status_code}] {url}")
         except Exception:
             pass
     raw = "\n".join(f"{e['status']} {e['url']}" for e in found) or "No API endpoints discovered"
@@ -47,6 +64,7 @@ def run_api_discovery(target):
 
 def run_ldap_enum(target, port=389):
     """Basic LDAP enumeration via nmap scripts."""
+    print(f"  [*] nmap LDAP scripts on {target}:{port}")
     raw = tools.run_tool([
         "nmap", "-p", str(port),
         "--script", "ldap-rootdse,ldap-search",
