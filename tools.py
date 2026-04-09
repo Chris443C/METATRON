@@ -140,38 +140,65 @@ def run_nikto(target: str) -> str:
 # PHASE A — ADDITIONAL RECON TOOLS
 # ─────────────────────────────────────────────
 
+def _find_wordlist():
+    """Return first available wordlist path, or None if none found."""
+    import os
+    candidates = [
+        "/usr/share/wordlists/dirb/common.txt",
+        "/usr/share/dirb/wordlists/common.txt",
+        "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
 def run_sublist3r(target):
     """Subdomain enumeration via sublist3r."""
+    print(f"  [*] sublist3r -d {target} -t 20")
     return run_tool(["sublist3r", "-d", target, "-t", "20"], timeout=120)
 
 
 def run_theharvester(target):
     """OSINT: emails, subdomains, hosts via theHarvester (free sources only)."""
+    print(f"  [*] theHarvester -d {target} -b duckduckgo,bing")
     return run_tool(["theHarvester", "-d", target, "-b", "duckduckgo,bing", "-l", "200"], timeout=120)
 
 
 def run_gobuster_dirs(target):
     """Web directory brute force via gobuster."""
-    wordlist = "/usr/share/wordlists/dirb/common.txt"
+    wordlist = _find_wordlist()
+    if not wordlist:
+        return "[!] No wordlist found. Install with: sudo apt install wordlists dirb"
     url = target if target.startswith("http") else f"http://{target}"
+    print(f"  [*] gobuster dir -u {url} -w {wordlist}")
     return run_tool(["gobuster", "dir", "-u", url, "-w", wordlist, "-t", "30", "-q"], timeout=300)
 
 
 def run_dirb(target):
     """Web directory brute force via dirb (alternative to gobuster)."""
+    wordlist = _find_wordlist()
+    if not wordlist:
+        return "[!] No wordlist found. Install with: sudo apt install wordlists dirb"
     url = target if target.startswith("http") else f"http://{target}"
-    return run_tool(["dirb", url, "/usr/share/wordlists/dirb/common.txt", "-S", "-r"], timeout=300)
+    print(f"  [*] dirb {url} {wordlist}")
+    return run_tool(["dirb", url, wordlist, "-S", "-r"], timeout=300)
 
 
 def run_masscan(target):
     """Fast full-port scan via masscan (requires sudo)."""
+    print(f"  [*] masscan {target} -p1-65535 --rate=1000  (requires sudo)")
     return run_tool(["sudo", "masscan", target, "-p", "1-65535", "--rate=1000"], timeout=120)
 
 
 def run_ffuf(target):
     """Fast web fuzzer via ffuf."""
-    wordlist = "/usr/share/wordlists/dirb/common.txt"
+    wordlist = _find_wordlist()
+    if not wordlist:
+        return "[!] No wordlist found. Install with: sudo apt install wordlists dirb"
     url = target if target.startswith("http") else f"http://{target}"
+    print(f"  [*] ffuf -u {url}/FUZZ -w {wordlist}")
     return run_tool(["ffuf", "-u", f"{url}/FUZZ", "-w", wordlist,
                      "-mc", "200,301,302,403", "-s"], timeout=300)
 
@@ -250,6 +277,24 @@ def run_tool_by_command(command_str: str) -> str:
         return f"[!] Blocked command: {parts[0]}"
 
     return run_tool(parts)
+
+
+def parse_target(target_str: str):
+    """
+    Parse a target string that may include a port (host:port notation).
+    Returns (host, port_str_or_None).
+    Handles: '192.168.1.1', '192.168.1.1:8080', 'http://example.com', 'example.com:443'
+    Ignores scheme-based colons (http://, https://).
+    """
+    s = target_str.strip()
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    s = s.split("/")[0]
+    if ":" in s:
+        parts = s.rsplit(":", 1)
+        if parts[1].isdigit():
+            return parts[0], parts[1]
+    return s, None
 
 
 # ─────────────────────────────────────────────

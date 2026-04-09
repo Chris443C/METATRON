@@ -198,6 +198,14 @@ def phase_2_recon(engagement_id):
     if not target or target.strip().lower() == "back":
         return None, ""
 
+    # Sanitize host:port notation — recon tools expect bare host/IP
+    host, detected_port = tools.parse_target(target)
+    if detected_port:
+        warn(f"Port notation detected in target: {target}")
+        warn(f"Using '{host}' as the recon target (port {detected_port} stripped).")
+        warn(f"To target a specific port, choose nmap [1] from the tool menu.")
+        target = host
+
     in_scope, reason = eng.check_target_in_scope(target, engagement_id)
     if not in_scope:
         error(f"OUT OF SCOPE: {reason}")
