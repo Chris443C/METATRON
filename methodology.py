@@ -33,13 +33,40 @@ def display_phase_progress(completed_phases):
 def run_methodology_workflow(engagement_id):
     """Top-level 10-phase workflow loop."""
     from metatron import prompt, success, warn, info, error, divider, confirm
-    completed = set()
     e = db.get_engagement(engagement_id)
     db.update_engagement_status(engagement_id, "active")
     session_state = {
         "sl_no": None, "raw_scan": "", "enum_data": "",
         "attack_paths": [], "exploit_results": []
     }
+
+    # Restore completed phases and session state from DB on resume
+    completed = {1}  # Phase 1 is always done once an engagement exists
+    existing_sessions = db.get_sessions_for_engagement(engagement_id)
+    if existing_sessions:
+        most_recent = existing_sessions[0]
+        session_state["sl_no"] = most_recent["sl_no"]
+        # Mark phases complete based on evidence in DB
+        completed.add(2)
+        sl_no = most_recent["sl_no"]
+        if db.get_evidence(sl_no):
+            phases_with_evidence = {e["phase"] for e in db.get_evidence(sl_no) if e.get("phase")}
+            if "enumeration" in phases_with_evidence:
+                completed.add(3)
+            if "exploitation" in phases_with_evidence:
+                completed.add(5)
+            if "post_exploitation" in phases_with_evidence:
+                completed.add(6)
+            if "reporting" in phases_with_evidence:
+                completed.add(7)
+            if "cloud_assessment" in phases_with_evidence:
+                completed.add(9)
+            if "segmentation" in phases_with_evidence:
+                completed.add(10)
+        if db.get_attack_paths(sl_no):
+            completed.add(4)
+        if db.get_retest_sessions(sl_no):
+            completed.add(8)
     while True:
         display_phase_progress(completed)
         info(f"Engagement: {e['engagement_name']} | Client: {e['client_name']}")
@@ -141,7 +168,36 @@ def phase_2_recon(engagement_id):
     from tools import interactive_tool_run
     divider()
     info("PHASE 2 — RECONNAISSANCE")
-    target = prompt("Enter target IP or domain: ")
+
+    # Offer in-scope targets from Phase 1 scope definition
+    scope = db.get_scope_items(engagement_id)
+    in_scope_items = scope.get("in_scope", [])
+    target = None
+    if in_scope_items:
+        print("\n  In-scope targets from your engagement scope:")
+        for i, s in enumerate(in_scope_items, 1):
+            desc = f"  — {s['description']}" if s.get("description") else ""
+            print(f"  [{i}] {s['target']}{desc}")
+        print("  [m] Enter a different target manually")
+        pick = input("\n  Select target: ").strip().lower()
+        if pick == "m":
+            target = prompt("Enter target IP or domain: ")
+        elif pick == "b":
+            return None, ""
+        else:
+            try:
+                target = in_scope_items[int(pick) - 1]["target"]
+                info(f"Target set to: {target}")
+            except (ValueError, IndexError):
+                warn("Invalid selection — enter target manually.")
+                target = prompt("Enter target IP or domain: ")
+    else:
+        warn("No in-scope targets defined. Add scope in Phase 1 first.")
+        target = prompt("Enter target IP or domain: ")
+
+    if not target or target.strip().lower() == "back":
+        return None, ""
+
     in_scope, reason = eng.check_target_in_scope(target, engagement_id)
     if not in_scope:
         error(f"OUT OF SCOPE: {reason}")

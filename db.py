@@ -579,6 +579,20 @@ def get_segmentation_tests(sl_no):
     return rows
 
 
+def get_sessions_for_engagement(engagement_id):
+    """Return all history rows linked to an engagement, newest first."""
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        "SELECT sl_no, target, scan_date, status, phase FROM history "
+        "WHERE engagement_id=%s ORDER BY sl_no DESC",
+        (engagement_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
 if __name__ == "__main__":
     try:
         conn = get_connection()
