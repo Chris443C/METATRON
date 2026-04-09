@@ -124,13 +124,19 @@ def extract_tool_calls(response: str) -> list:
 def run_tool_calls(calls: list) -> str:
     """
     Execute all tool/search calls and return combined results string.
+    User is prompted [y/N] before each dispatch — default is no.
     """
     if not calls:
         return ""
 
     results = ""
     for call_type, call_content in calls:
-        print(f"\n  [DISPATCH] {call_type}: {call_content}")
+        print(f"\n  [AI REQUEST] {call_type}: {call_content}")
+        answer = input("  Run this? [y/N]: ").strip().lower()
+        if answer != "y":
+            print(f"  [SKIPPED]")
+            results += f"\n[{call_type} SKIPPED by user: {call_content}]\n"
+            continue
 
         if call_type == "TOOL":
             output = run_tool_by_command(call_content)
